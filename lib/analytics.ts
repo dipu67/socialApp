@@ -36,8 +36,22 @@ export const event = ({ action, category, label, value }: {
   }
 };
 
-// Custom hook for analytics tracking
+// Custom hook for analytics tracking (without useSearchParams)
 export const useAnalytics = () => {
+  const pathname = usePathname();
+
+  const trackEvent = event;
+  const trackPageView = pageview;
+
+  return {
+    trackEvent,
+    trackPageView,
+    pathname,
+  };
+};
+
+// Component to track page views with search params
+export const AnalyticsPageTracker = () => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -48,10 +62,7 @@ export const useAnalytics = () => {
     }
   }, [pathname, searchParams]);
 
-  return {
-    trackEvent: event,
-    trackPageView: pageview,
-  };
+  return null;
 };
 
 // Chat-specific analytics events

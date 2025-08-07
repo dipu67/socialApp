@@ -1,10 +1,24 @@
 'use client';
 import { useSession } from 'next-auth/react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, Suspense } from 'react';
+import { useEffect, Suspense, useState } from 'react';
 import Sidebar from '@/components/sidebar';
 import MobileBottomNav from '@/components/mobile-bottom-nav';
 import MobileHeader from '@/components/mobile-header';
+
+function ChatWindowDetector({ pathname, onChatWindowChange }: { 
+  pathname: string; 
+  onChatWindowChange: (isInChatWindow: boolean) => void;
+}) {
+  const searchParams = useSearchParams();
+  
+  useEffect(() => {
+    const isInChatWindow = pathname === '/chat' && !!searchParams.get('chatId');
+    onChatWindowChange(isInChatWindow);
+  }, [pathname, searchParams, onChatWindowChange]);
+
+  return null;
+}
 
 function AuthenticatedLayoutContent({
   children,
@@ -14,10 +28,7 @@ function AuthenticatedLayoutContent({
   const { data: session, status } = useSession();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  
-  // Check if we're in a chat window on mobile (when chatId is present in URL)
-  const isInChatWindow = pathname === '/chat' && searchParams.get('chatId');
+  const [isInChatWindow, setIsInChatWindow] = useState(false);
   
   // Hide mobile header when in chat window
   const hideMobileHeader = isInChatWindow;
@@ -48,6 +59,14 @@ function AuthenticatedLayoutContent({
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Chat Window Detector */}
+      <Suspense fallback={null}>
+        <ChatWindowDetector 
+          pathname={pathname} 
+          onChatWindowChange={setIsInChatWindow} 
+        />
+      </Suspense>
+      
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <Sidebar />

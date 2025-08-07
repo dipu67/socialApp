@@ -43,17 +43,24 @@ services:
         echo 'MinIO buckets created and configured';
         tail -f /dev/null
       "
-
-  mongo-express:
-    image: mongo-express
-    restart: always
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat-app
     ports:
-      - 8081:8081
+      - "3000:3000"
+    depends_on:
+      - mongo
+      - minio
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: root
-      ME_CONFIG_MONGODB_ADMINPASSWORD: dipu67
-      ME_CONFIG_MONGODB_URL: mongodb://root:dipu67@mongo:27017/
-      ME_CONFIG_BASICAUTH: false
+      MONGO_URI: mongodb://root:dipu67@mongo:27017/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+    volumes:
+      - .:/app
+ 
 volumes:
   mongo_data:
     driver: local

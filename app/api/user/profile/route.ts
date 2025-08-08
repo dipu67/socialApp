@@ -3,8 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { connectDB } from '@/lib/db/db';
 import { Users } from '@/lib/db/users';
-import { deleteImageByUrl, isMinioUrl } from '@/lib/minio-utils';
-import { BUCKETS } from '@/lib/minio';
+import { deleteImageByUrl, isMinioUrl } from '@/lib/storage-utils';
+import { BUCKETS } from '@/lib/storage';
 // Firebase utilities removed - using MinIO now
 
 export async function GET(req: NextRequest) {

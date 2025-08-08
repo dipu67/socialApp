@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { minioClient, BUCKETS } from '@/lib/minio';
+import { minioClient, BUCKETS } from '@/lib/storage';
 import { HeadBucketCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 
 export async function GET() {

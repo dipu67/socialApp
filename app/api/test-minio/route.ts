@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { initializeMinIOBuckets } from '@/lib/minio-utils';
+import { initializeMinIOBuckets } from '@/lib/storage-utils';
 
 export async function GET() {
   try {

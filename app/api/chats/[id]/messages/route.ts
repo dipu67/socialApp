@@ -93,7 +93,7 @@ export async function POST(
       if (file) {
         try {
           // Import MinIO utilities
-          const { uploadChatMedia, initializeMinIOBuckets, getFileType } = await import('@/lib/minio-utils');
+          const { uploadChatMedia, initializeMinIOBuckets, getFileType } = await import('@/lib/storage-utils');
 
           // Initialize buckets if not already done
           await initializeMinIOBuckets();

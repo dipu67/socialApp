@@ -6,21 +6,13 @@ import {
   HeadBucketCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { minioClient, BUCKETS, FILE_CONFIG } from './minio';
+import { minioClient, BUCKETS, FILE_CONFIG } from './storage';
 import { v4 as uuidv4 } from 'uuid';
 
-// Get the public URL for MinIO files
-function getMinioPublicUrl(): string {
-  // In production, use public domain or IP for file access
-  if (process.env.NODE_ENV === 'production') {
-    return process.env.MINIO_PUBLIC_URL || 
-           process.env.MINIO_PUBLIC_ENDPOINT ||
-           `https://${process.env.DOMAIN}:9000` ||
-           `http://${process.env.VPS_IP || process.env.DOMAIN || 'localhost'}:9000`;
-  }
-  
-  // Development environment
-  return process.env.MINIO_ENDPOINT || 'http://localhost:9000';
+// Get the public URL for R2 files
+function getR2PublicUrl(): string {
+  return process.env.R2_PUBLIC_URL || 
+         `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 }
 
 // Check if bucket exists, create if not
@@ -28,27 +20,29 @@ export async function ensureBucketExists(bucketName: string) {
   try {
     await minioClient.send(new HeadBucketCommand({ Bucket: bucketName }));
   } catch (error) {
-    if ((error as any).name === 'NotFound') {
+    if ((error as any).name === 'NotFound' || (error as any).name === 'NoSuchBucket') {
       await minioClient.send(new CreateBucketCommand({ Bucket: bucketName }));
-      console.log(`Created bucket: ${bucketName}`);
+      console.log(`Created R2 bucket: ${bucketName}`);
     } else {
       throw error;
     }
   }
 }
 
-// Initialize all required buckets
-export async function initializeMinIOBuckets() {
+// Initialize storage bucket (single bucket for all file types)
+export async function initializeStorageBuckets() {
   try {
-    for (const bucketName of Object.values(BUCKETS)) {
-      await ensureBucketExists(bucketName);
-    }
-    console.log('All MinIO buckets initialized successfully');
+    const bucketName = process.env.R2_BUCKET_NAME || 'social-app-storage';
+    await ensureBucketExists(bucketName);
+    console.log('Storage bucket initialized successfully');
   } catch (error) {
-    console.error('Error initializing MinIO buckets:', error);
+    console.error('Error initializing storage bucket:', error);
     throw error;
   }
 }
+
+// For backward compatibility
+export const initializeMinIOBuckets = initializeStorageBuckets;
 
 // Get file type from MIME type
 export function getFileType(mimeType: string): 'image' | 'video' | 'document' | 'other' {
@@ -104,8 +98,8 @@ export function generateFileKey(originalName: string, folder: string, userId?: s
   return `${folder}/${userPrefix}${timestamp}-${uuid}.${ext}`;
 }
 
-// Upload file to MinIO
-export async function uploadToMinio(
+// Upload file to storage (R2/S3 compatible)
+export async function uploadToStorage(
   file: Buffer | Uint8Array | File,
   bucketName: string,
   key: string,
@@ -123,17 +117,20 @@ export async function uploadToMinio(
 
     await minioClient.send(command);
     
-    // Return the public file URL using the dynamic public URL
-    const publicUrl = getMinioPublicUrl();
-    return `${publicUrl}/${bucketName}/${key}`;
+    // Use the R2 public development URL for direct access
+    const publicUrl = getR2PublicUrl();
+    return `${publicUrl}/${key}`;
   } catch (error) {
-    console.error('Error uploading to MinIO:', error);
+    console.error('Error uploading to storage:', error);
     throw new Error('Failed to upload file to storage');
   }
 }
 
-// Delete file from MinIO
-export async function deleteFromMinio(bucketName: string, key: string): Promise<void> {
+// For backward compatibility
+export const uploadToMinio = uploadToStorage;
+
+// Delete file from storage
+export async function deleteFromStorage(bucketName: string, key: string): Promise<void> {
   try {
     const command = new DeleteObjectCommand({
       Bucket: bucketName,
@@ -143,17 +140,36 @@ export async function deleteFromMinio(bucketName: string, key: string): Promise<
     await minioClient.send(command);
     console.log(`Successfully deleted ${key} from ${bucketName}`);
   } catch (error) {
-    console.error('Error deleting from MinIO:', error);
+    console.error('Error deleting from storage:', error);
     throw new Error('Failed to delete file from storage');
   }
 }
 
-// Extract key from MinIO URL
+// For backward compatibility
+export const deleteFromMinio = deleteFromStorage;
+
+// Extract key from R2/MinIO URL
 export function extractKeyFromUrl(url: string): string | null {
   try {
-    // URL format: http://domain:9000/bucket-name/key or https://domain:9000/bucket-name/key
+    // Handle our custom storage API URLs
+    if (url.startsWith('/api/storage/')) {
+      const parts = url.split('/');
+      // Format: /api/storage/bucket/key/parts
+      return parts.slice(3).join('/');
+    }
+    
+    // Handle R2 public development URLs (https://pub-xxx.r2.dev/key)
+    if (url.includes('.r2.dev')) {
+      const urlObj = new URL(url);
+      // Remove the leading slash from pathname
+      return urlObj.pathname.substring(1);
+    }
+    
     const urlObj = new URL(url);
     const pathParts = urlObj.pathname.split('/');
+    
+    // For R2 URLs: https://account-id.r2.cloudflarestorage.com/bucket-name/key
+    // For MinIO URLs: http://domain:9000/bucket-name/key
     // Remove empty first element and bucket name, join the rest as key
     return pathParts.slice(2).join('/');
   } catch (error) {
@@ -162,32 +178,43 @@ export function extractKeyFromUrl(url: string): string | null {
   }
 }
 
-// Check if URL is a MinIO URL (local or VPS)
-export function isMinioUrl(url: string): boolean {
+// Check if URL is a storage URL (R2/MinIO/S3)
+export function isStorageUrl(url: string): boolean {
   if (!url) return false;
   
-  // Check for localhost (development)
+  // Check for R2 public development URLs
+  if (url.includes('.r2.dev')) return true;
+  
+  // Check for our custom storage API URLs (fallback)
+  if (url.startsWith('/api/storage/')) return true;
+  
+  // Check for R2 URLs
+  if (url.includes('.r2.cloudflarestorage.com')) return true;
+  
+  // Check for custom R2 public URL
+  const publicUrl = process.env.R2_PUBLIC_URL;
+  if (publicUrl && url.includes(publicUrl)) return true;
+  
+  // Backward compatibility - check for old MinIO URLs
   if (url.includes('localhost:9000')) return true;
   
-  // Check for VPS domain or IP
   const vpsIp = process.env.VPS_IP;
   const domain = process.env.DOMAIN;
   
   if (vpsIp && url.includes(`${vpsIp}:9000`)) return true;
   if (domain && url.includes(`${domain}:9000`)) return true;
   
-  // Check for MinIO public endpoint
-  const publicEndpoint = process.env.MINIO_PUBLIC_ENDPOINT || process.env.MINIO_PUBLIC_URL;
-  if (publicEndpoint && url.includes(publicEndpoint)) return true;
-  
   return false;
 }
 
+// For backward compatibility
+export const isMinioUrl = isStorageUrl;
+
 // Delete image by URL
 export async function deleteImageByUrl(imageUrl: string, bucketName: string): Promise<void> {
-  // Only delete if it's a MinIO URL
-  if (!isMinioUrl(imageUrl)) {
-    console.log('Skipping deletion - not a MinIO URL:', imageUrl);
+  // Only delete if it's a storage URL (R2/MinIO/S3)
+  if (!isStorageUrl(imageUrl)) {
+    console.log('Skipping deletion - not a storage URL:', imageUrl);
     return;
   }
 
@@ -195,7 +222,7 @@ export async function deleteImageByUrl(imageUrl: string, bucketName: string): Pr
   if (!key) {
     throw new Error('Invalid image URL');
   }
-  await deleteFromMinio(bucketName, key);
+  await deleteFromStorage(bucketName, key);
 }
 
 // Get signed URL for private files (if needed)
@@ -227,7 +254,7 @@ export async function uploadProfileImage(file: File, userId: string): Promise<st
   const buffer = Buffer.from(await file.arrayBuffer());
   const key = generateFileKey(file.name, 'profiles', userId);
   
-  return uploadToMinio(buffer, BUCKETS.PROFILES, key, file.type);
+  return uploadToStorage(buffer, BUCKETS.PROFILES, key, file.type);
 }
 
 // Upload cover image
@@ -240,7 +267,7 @@ export async function uploadCoverImage(file: File, userId: string): Promise<stri
   const buffer = Buffer.from(await file.arrayBuffer());
   const key = generateFileKey(file.name, 'covers', userId);
   
-  return uploadToMinio(buffer, BUCKETS.COVERS, key, file.type);
+  return uploadToStorage(buffer, BUCKETS.COVERS, key, file.type);
 }
 
 // Upload post media
@@ -253,7 +280,7 @@ export async function uploadPostMedia(file: File, userId: string): Promise<strin
   const buffer = Buffer.from(await file.arrayBuffer());
   const key = generateFileKey(file.name, 'posts', userId);
   
-  return uploadToMinio(buffer, BUCKETS.POSTS, key, file.type);
+  return uploadToStorage(buffer, BUCKETS.POSTS, key, file.type);
 }
 
 // Upload chat media
@@ -266,7 +293,7 @@ export async function uploadChatMedia(file: File, chatId: string, userId: string
   const buffer = Buffer.from(await file.arrayBuffer());
   const key = generateFileKey(file.name, `chats/${chatId}`, userId);
   
-  return uploadToMinio(buffer, BUCKETS.CHATS, key, file.type);
+  return uploadToStorage(buffer, BUCKETS.CHATS, key, file.type);
 }
 
 // Upload group media (avatars, etc.)
@@ -279,5 +306,5 @@ export async function uploadGroupMedia(file: File, groupId: string): Promise<str
   const buffer = Buffer.from(await file.arrayBuffer());
   const key = generateFileKey(file.name, 'groups', groupId);
   
-  return uploadToMinio(buffer, BUCKETS.GROUPS, key, file.type);
+  return uploadToStorage(buffer, BUCKETS.GROUPS, key, file.type);
 }

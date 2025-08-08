@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { uploadCoverImage, initializeMinIOBuckets, deleteImageByUrl, isMinioUrl } from '@/lib/minio-utils';
-import { BUCKETS } from '@/lib/minio';
+import { uploadCoverImage, initializeMinIOBuckets, deleteImageByUrl, isMinioUrl } from '@/lib/storage-utils';
+import { BUCKETS } from '@/lib/storage';
 import { connectDB } from '@/lib/db/db';
 import { Users } from '@/lib/db/users';
 

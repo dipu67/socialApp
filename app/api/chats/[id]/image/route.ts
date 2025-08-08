@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { connectDB } from '@/lib/db/db';
 import { Chats } from '@/lib/db/chat';
-import { uploadGroupMedia } from '@/lib/minio-utils';
+import { uploadGroupMedia } from '@/lib/storage-utils';
 import sharp from 'sharp';
 
 export async function POST(

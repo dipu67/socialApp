@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { uploadGroupMedia, initializeMinIOBuckets } from '@/lib/minio-utils';
+import { uploadGroupMedia, initializeMinIOBuckets } from '@/lib/storage-utils';
 import { connectDB } from '@/lib/db/db';
 import { Chats } from '@/lib/db/chat';
 

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from "@/lib/auth";
-import { uploadPostMedia, initializeMinIOBuckets } from '@/lib/minio-utils';
+import { uploadToMinio, initializeMinIOBuckets, generateFileKey } from '@/lib/storage-utils';
+import { BUCKETS } from '@/lib/storage';
+import { Users } from '@/lib/db/users';
+import { connectDB } from '@/lib/db/db';
 import sharp from 'sharp';
+
+// Keep using the existing storage-utils for backward compatibility
+// The storage-utils now internally uses R2
 
 export async function POST(request: NextRequest) {
   try {
@@ -68,36 +74,36 @@ export async function POST(request: NextRequest) {
       // Initialize MinIO buckets
       await initializeMinIOBuckets();
       
-      // Create a File object from the optimized buffer
-      const optimizedFile = new File([new Uint8Array(optimizedBuffer)], `${Date.now()}.jpg`, {
-        type: 'image/jpeg',
-      });
+      // Generate file key for organization
+      const fileName = `${Date.now()}.jpg`;
       
-      // Get user ID for folder structure
-      const userId = 'test-user'; // Temporary for testing
-      // const userId = session.user.email; // Use this when auth is enabled
+      // Connect to database to get user info
+      await connectDB();
+      const user = await Users.findOne({ email: session.user.email });
+      if (!user) {
+        return NextResponse.json(
+          { error: 'User not found' },
+          { status: 404 }
+        );
+      }
       
-      console.log('Uploading post image to MinIO');
+      const fileKey = generateFileKey(fileName, 'posts', user._id.toString());
       
-      // Upload the optimized image to MinIO
-      const downloadURL = await uploadPostMedia(optimizedFile, userId || 'unknown');
+      console.log('Uploading post image to R2 storage');
       
-      console.log('Post image uploaded successfully:', downloadURL);
-
-      // Save image URL to database (you can extend this to save to Posts collection)
-      // Example: Create a post record or update existing post with image URL
-      // await connectDB();
-      // const post = await Posts.create({
-      //   author: userId,
-      //   image: downloadURL,
-      //   title: 'Image Post',
-      //   content: 'Post with uploaded image'
-      // });
+      // Upload the optimized image buffer directly to R2
+      const downloadURL = await uploadToMinio(
+        optimizedBuffer,
+        BUCKETS.POSTS,
+        fileKey,
+        'image/jpeg'
+      );
+      
+      console.log('Post image uploaded successfully to R2:', downloadURL);
 
       return NextResponse.json({
         message: 'Image uploaded successfully',
-        imageUrl: downloadURL,
-        // post: post // Include if saving to database
+        imageUrl: downloadURL
       });
     } catch (uploadError) {
       console.error('Error uploading to MinIO:', uploadError);
@@ -105,9 +111,35 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error uploading post image:', error);
+    console.error('Error creating post:', error);
+    
+    // More specific error handling
+    if (error instanceof Error) {
+      // Handle specific Sharp errors
+      if (error.message.includes('Input file contains unsupported image format')) {
+        return NextResponse.json({ error: 'Unsupported image format. Please use JPG, PNG, or WebP.' }, { status: 400 });
+      }
+      
+      // Handle file size errors
+      if (error.message.includes('File size')) {
+        return NextResponse.json({ error: 'File size too large. Maximum 5MB allowed.' }, { status: 400 });
+      }
+      
+      // Handle database errors
+      if (error.message.includes('validation') || error.message.includes('required')) {
+        return NextResponse.json({ error: 'Invalid post data. Please check your input.' }, { status: 400 });
+      }
+      
+      // Handle MinIO connection errors
+      if (error.message.includes('Connection') || error.message.includes('Network')) {
+        return NextResponse.json({ error: 'Upload service temporarily unavailable. Please try again.' }, { status: 503 });
+      }
+      
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to upload image' },
+      { error: 'Failed to create post. Please try again.' },
       { status: 500 }
     );
   }

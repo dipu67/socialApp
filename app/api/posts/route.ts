@@ -45,16 +45,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { title, content, image, tags, category } = body;
 
-    if (!content || content.trim().length === 0) {
+    console.log('📝 Post creation request body:', { title, content, image, tags, category });
+
+    // Content is required unless there's an image
+    if ((!content || content.trim().length === 0) && (!image || image.trim().length === 0)) {
+      console.log('❌ Content and image validation failed:', { content, image });
       return NextResponse.json(
-        { error: 'Content is required' },
+        { error: 'Either content or image is required' },
         { status: 400 }
       );
     }
 
     // Find the user
     const user = await Users.findOne({ email: session.user.email });
+    console.log('👤 User lookup result:', { email: session.user.email, userFound: !!user });
+    
     if (!user) {
+      console.log('❌ User not found in database');
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
@@ -63,8 +70,8 @@ export async function POST(request: NextRequest) {
 
     // Create the post
     const newPost = new Posts({
-      title: title || 'Untitled',
-      content: content.trim(),
+      title: title || (image ? 'Image Post' : 'Untitled'),
+      content: content && content.trim() ? content.trim() : (image ? '' : 'No content'),
       author: user._id,
       image: image || '',
       tags: tags || [],
@@ -100,8 +107,39 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error creating post:', error);
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    });
+    
+    // More specific error handling
+    if (error instanceof Error) {
+      // Handle database errors
+      if (error.message.includes('validation') || error.message.includes('required')) {
+        console.log('❌ Validation error:', error.message);
+        return NextResponse.json({ error: 'Invalid post data. Please check your input.' }, { status: 400 });
+      }
+      
+      // Handle auth errors
+      if (error.message.includes('User not found')) {
+        console.log('❌ Auth error:', error.message);
+        return NextResponse.json({ error: 'User not found. Please log in again.' }, { status: 404 });
+      }
+      
+      // Handle connection errors
+      if (error.message.includes('Connection') || error.message.includes('Network')) {
+        console.log('❌ Connection error:', error.message);
+        return NextResponse.json({ error: 'Database connection error. Please try again.' }, { status: 503 });
+      }
+      
+      console.log('❌ Generic error:', error.message);
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    
+    console.log('❌ Unknown error type');
     return NextResponse.json(
-      { error: 'Failed to create post' },
+      { error: 'Failed to create post. Please try again.' },
       { status: 500 }
     );
   }

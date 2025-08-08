@@ -7,7 +7,7 @@ export const chatMetadata: Metadata = {
     title: "Chat - Real-time Messaging | ChatApp",
     description: "Engage in real-time conversations with friends and communities. Join chat rooms, send messages, and stay connected instantly.",
     type: "website",
-    url: "https://chatapp.com/chat",
+    url: "https://socialapp.a24dev.me/chat",
     images: [
       {
         url: "/og-chat.png",

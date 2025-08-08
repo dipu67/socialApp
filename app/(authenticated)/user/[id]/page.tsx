@@ -96,6 +96,7 @@ export default function UserProfilePage() {
   const [loadingLikes, setLoadingLikes] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isMessaging, setIsMessaging] = useState(false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const userId = params.id as string;
@@ -103,6 +104,15 @@ export default function UserProfilePage() {
 
   useEffect(() => {
     if (userId) {
+      // Reset states when navigating to a different user
+      setUserProfile(null);
+      setIsFollowing(false);
+      setIsFollowLoading(false);
+      setPosts([]);
+      setMediaPosts([]);
+      setLikedPosts([]);
+      setError(null);
+      
       fetchUserProfile();
     }
   }, [userId]);
@@ -217,29 +227,78 @@ export default function UserProfilePage() {
   };
 
   const handleFollow = async () => {
+    // Prevent multiple simultaneous requests
+    if (isFollowLoading) return;
+    
+    // Store current state for rollback if needed
+    const previousFollowState = isFollowing;
+    const previousFollowerCount = userProfile?.followersCount || 0;
+    
     try {
-      console.log('Following user:', userId, 'Current status:', isFollowing); // Debug log
+      setIsFollowLoading(true);
+      
+      // Optimistic update
+      setIsFollowing(!isFollowing);
+      if (userProfile) {
+        setUserProfile({
+          ...userProfile,
+          followersCount: isFollowing 
+            ? Math.max(0, previousFollowerCount - 1) 
+            : previousFollowerCount + 1
+        });
+      }
+      
+      console.log('Following user:', userId, 'Previous status:', previousFollowState); // Debug log
+      
       const response = await fetch(`/api/user/${userId}/follow`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
       if (response.ok) {
         const data = await response.json();
         console.log('Follow response:', data); // Debug log
+        
+        // Update with server response (this should match our optimistic update)
         setIsFollowing(data.isFollowing);
         
-        // Update followers count based on the response
+        // Update user profile with actual follower count from server
         if (userProfile) {
           setUserProfile({
             ...userProfile,
-            followersCount: data.followersCount || userProfile.followersCount
+            followersCount: data.followersCount || data.followers || userProfile.followersCount
           });
         }
       } else {
-        console.error("Failed to toggle follow");
+        // Rollback optimistic update on error
+        setIsFollowing(previousFollowState);
+        if (userProfile) {
+          setUserProfile({
+            ...userProfile,
+            followersCount: previousFollowerCount
+          });
+        }
+        
+        const errorData = await response.json();
+        console.error("Failed to toggle follow:", errorData);
+        setError(errorData.error || "Failed to update follow status");
       }
     } catch (error) {
+      // Rollback optimistic update on error
+      setIsFollowing(previousFollowState);
+      if (userProfile) {
+        setUserProfile({
+          ...userProfile,
+          followersCount: previousFollowerCount
+        });
+      }
+      
       console.error("Error toggling follow:", error);
+      setError("Network error. Please try again.");
+    } finally {
+      setIsFollowLoading(false);
     }
   };
 
@@ -475,7 +534,7 @@ export default function UserProfilePage() {
                   
                   {userProfile.username && (
                     <p className="text-lg text-gray-500 dark:text-gray-400 mb-4">
-                      @{userProfile.username}
+                      {userProfile.username}
                     </p>
                   )}
 
@@ -592,10 +651,16 @@ export default function UserProfilePage() {
                   <div className="flex flex-col sm:flex-row gap-3 mt-6 lg:mt-0">
                     <Button
                       onClick={handleFollow}
+                      disabled={isFollowLoading}
                       className="flex items-center"
                       variant={isFollowing ? "outline" : "default"}
                     >
-                      {isFollowing ? (
+                      {isFollowLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                          {isFollowing ? "Unfollowing..." : "Following..."}
+                        </>
+                      ) : isFollowing ? (
                         <>
                           <UserCheck className="h-4 w-4 mr-2" />
                           Following

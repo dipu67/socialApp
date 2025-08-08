@@ -462,7 +462,7 @@ function SettingsPageContent() {
           )}
 
           {/* Danger Zone */}
-          <Card className="border-red-200 dark:border-red-800">
+          <Card className="border-red-200 dark:border-red-800 mb-20">
             <CardHeader>
               <CardTitle className="text-red-600 dark:text-red-400">Danger Zone</CardTitle>
             </CardHeader>

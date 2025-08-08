@@ -94,14 +94,6 @@ export default function Sidebar() {
       count: 0
     },
     { 
-      id: 'notifications',
-      icon: Bell,
-      label: 'Notifications',
-      route: '/notifications',
-      count: notificationCount,
-      realtime: true
-    },
-    { 
       id: 'profile', 
       icon: User, 
       label: 'Profile', 

@@ -389,13 +389,16 @@ function ExplorePageContent() {
                     </div>
                   )}
                   {result.type === 'user' && (
-                    <div className="flex items-center space-x-3">
+                    <div 
+                      className="flex items-center space-x-3 cursor-pointer"
+                      onClick={() => router.push(`/user/${result._id}`)}
+                    >
                       <Avatar className="h-10 w-10">
                         <AvatarImage src={result.avatar} />
                         <AvatarFallback>{getInitials(result.name)}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
-                        <p className="font-semibold">{result.name}</p>
+                        <p className="font-semibold hover:text-blue-600 transition-colors">{result.name}</p>
                         <p className="text-sm text-gray-500">{result.username} • {result.followers} followers</p>
                       </div>
                       <Users className="h-5 w-5 text-gray-400" />
@@ -552,7 +555,11 @@ function ExplorePageContent() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredUsers.map((user) => (
-              <Card key={user._id} className="hover:shadow-lg transition-shadow">
+              <Card 
+                key={user._id} 
+                className="hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => router.push(`/user/${user._id}`)}
+              >
                 <CardContent className="p-6">
                   <div className="flex items-center space-x-4">
                     <Avatar className="h-16 w-16">
@@ -560,7 +567,7 @@ function ExplorePageContent() {
                       <AvatarFallback className="text-lg">{getInitials(user.name)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-lg">{user.name}</h3>
+                      <h3 className="font-semibold text-lg hover:text-blue-600 transition-colors">{user.name}</h3>
                       <p className="text-gray-500">{user.username ? `@${user.username}` : ''}</p>
                       <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
                         <span className="flex items-center">
@@ -572,7 +579,10 @@ function ExplorePageContent() {
                     <Button
                       variant={user.isFollowing ? "outline" : "default"}
                       size="sm"
-                      onClick={() => handleFollow(user._id)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent card click when clicking follow button
+                        handleFollow(user._id);
+                      }}
                       className={user.isFollowing ? "border-blue-300 text-blue-600 hover:bg-blue-50" : ""}
                     >
                       {user.isFollowing ? 'Following' : 'Follow'}
